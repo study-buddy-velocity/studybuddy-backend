@@ -60,9 +60,7 @@ export class ChatService {
             content: prompt,
           },
         ],
-        temperature: 0.2,
-        max_completion_tokens:500
-      });
+        temperature: 0.2});
   
       const reply = response.choices[0]?.message;
       const totalTokens = response.usage.total_tokens
