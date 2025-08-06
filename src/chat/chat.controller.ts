@@ -4,15 +4,53 @@ import { ChatQueryDto } from '../dtos/chatQueryDto';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/guard/jwt-auth.guard';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 
 
+@ApiTags('Chat')
 @Controller('chat')
 export class ChatController {
     constructor(private readonly chatService: ChatService) {}
 
     @UseGuards(JwtAuthGuard)
     @Get()
-    async getEducationalChat(@Req() req, @Query() query: ChatQueryDto): Promise<{ response: string }> {
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({
+      summary: 'Get AI chat response',
+      description: 'Send a query to the AI tutor and get an educational response'
+    })
+    @ApiQuery({
+      name: 'subject',
+      description: 'The subject for the educational query',
+      example: 'Mathematics'
+    })
+    @ApiQuery({
+      name: 'query',
+      description: 'The user\'s question or query',
+      example: 'Explain quadratic equations'
+    })
+    @ApiQuery({
+      name: 'topic',
+      description: 'The topic for the educational query (optional)',
+      required: false,
+      example: 'Quadratic Equations'
+    })
+    @ApiResponse({
+      status: 200,
+      description: 'Chat response received',
+      schema: {
+        type: 'object',
+        properties: {
+          response: {
+            type: 'string',
+            description: 'AI-generated educational response'
+          }
+        }
+      }
+    })
+    @ApiResponse({ status: 400, description: 'Invalid query parameters' })
+    @ApiResponse({ status: 401, description: 'Authentication required' })
+    async getEducationalChat(@Req() req: any, @Query() query: ChatQueryDto): Promise<{ response: string }> {
         const queryDto = plainToInstance(ChatQueryDto, query);
         const errors = await validate(queryDto);
 
@@ -20,8 +58,8 @@ export class ChatController {
         throw new BadRequestException('Invalid query parameters');
         }
 
-        const { subject, query: userQuery } = queryDto;
-        const response = await this.chatService.getChatResponse(req["userID"], subject, userQuery);
+        const { subject, query: userQuery, topic } = queryDto;
+        const response = await this.chatService.getChatResponse(req["userID"], subject, userQuery, topic);
         return { response };
     }
 

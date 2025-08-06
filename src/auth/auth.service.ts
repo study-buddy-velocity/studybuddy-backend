@@ -20,16 +20,46 @@ export class AuthService {
 
     async login(loginDto: LoginDto) {
       const { email, password } = loginDto;
+      ////console.log('Login attempt for email:', email);
+
       const user = await this.userModel.findOne({ email });
-      
+
       if (!user) {
+       // //console.log('User not found for email:', email);
         throw new UnauthorizedException('Invalid credentials');
       }
-  
-      const isPasswordValid = (decryptData(user.password).toString() == password);
+
+      //console.log('User found:', { email: user.email, role: user.role });
+      //console.log('Encrypted password from DB:', user.password);
+
+      const decryptedPassword = decryptData(user.password).toString();
+      // //console.log('Decrypted password:', decryptedPassword);
+      // //console.log('Provided password:', password);
+      // //console.log('Decrypted password length:', decryptedPassword.length);
+      // //console.log('Provided password length:', password.length);
+      // //console.log('Decrypted password bytes:', Buffer.from(decryptedPassword, 'utf8'));
+      // //console.log('Provided password bytes:', Buffer.from(password, 'utf8'));
+      // //console.log('Password match (===):', decryptedPassword === password);
+      // //console.log('Password match (trim):', decryptedPassword.trim() === password.trim());
+
+      // Try multiple comparison methods
+      const exactMatch = decryptedPassword === password;
+      const trimMatch = decryptedPassword.trim() === password.trim();
+      const bufferMatch = Buffer.from(decryptedPassword, 'utf8').equals(Buffer.from(password, 'utf8'));
+      const normalizedMatch = decryptedPassword.normalize() === password.normalize();
+
+      // //console.log('Exact match:', exactMatch);
+      // //console.log('Trim match:', trimMatch);
+      // //console.log('Buffer match:', bufferMatch);
+      // //console.log('Normalized match:', normalizedMatch);
+
+      const isPasswordValid = exactMatch || trimMatch || bufferMatch || normalizedMatch;
       if (!isPasswordValid) {
+        ////console.log('Password validation failed');
         throw new UnauthorizedException('Invalid credentials');
       }
+
+      ////console.log('Login successful for user:', email);
   
       const payload = { email: user.email, sub: user._id, role: user.role };
       const token = await this.jwtService.signAsync(payload);

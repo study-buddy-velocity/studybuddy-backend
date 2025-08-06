@@ -1,0 +1,1643 @@
+openapi: 3.0.3
+info:
+  title: StudyBuddy API
+  description: |
+    StudyBuddy is an educational platform that provides AI-powered chat assistance, 
+    quiz management, and learning analytics for students.
+    
+    ## Authentication
+    Most endpoints require JWT authentication. Include the JWT token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+    
+    ## Admin Access
+    Some endpoints require admin privileges. Admin users have elevated permissions for managing subjects, quizzes, and user feedback.
+  version: 1.0.0
+  contact:
+    name: StudyBuddy API Support
+    email: support@studybuddy.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://api.studybuddy.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Authentication Endpoints
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginDto'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: JWT access token
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user (Admin only)
+      description: Create a new user account. Requires admin privileges.
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDto'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Chat Endpoints
+  /chat:
+    get:
+      tags:
+        - Chat
+      summary: Get AI chat response
+      description: Send a query to the AI tutor and get an educational response
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The subject for the educational query
+          example: "Mathematics"
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The user's question or query
+          example: "Explain quadratic equations"
+      responses:
+        '200':
+          description: Chat response received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    description: AI-generated educational response
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /chat/chat-history:
+    get:
+      tags:
+        - Chat
+      summary: Get chat history
+      description: Retrieve chat history for a specific date or last five entries
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Date to get history for (YYYY-MM-DD). If not provided, returns last five entries.
+          example: "2024-01-15"
+      responses:
+        '200':
+          description: Chat history retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatHistory'
+        '404':
+          description: History not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /chat/heat-map:
+    get:
+      tags:
+        - Chat
+      summary: Get filtered chat history for heat map
+      description: Get chat history within a date range for visualization
+      parameters:
+        - name: lowerBound
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Start date for the range
+          example: "2024-01-01"
+        - name: upperBound
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: End date for the range
+          example: "2024-01-31"
+      responses:
+        '200':
+          description: Filtered chat history retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatHistoryHeatMap'
+
+  /chat/chat-streak:
+    get:
+      tags:
+        - Chat
+      summary: Get user's chat streak
+      description: Get the number of consecutive days the user has been active
+      responses:
+        '200':
+          description: Chat streak retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  streak:
+                    type: integer
+                    description: Number of consecutive active days
+                    example: 7
+        '404':
+          description: History not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # User Endpoints
+  /users:
+    get:
+      tags:
+        - Users
+      summary: Get all users (Admin only)
+      description: Retrieve a list of all users in the system
+      security:
+        - AdminAuth: []
+      responses:
+        '200':
+          description: List of users retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Users
+      summary: Update user (Admin only)
+      description: Update user information
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: User ID to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDto'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user (Admin only)
+      description: Delete a user from the system
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: User ID to delete
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/user-details:
+    post:
+      tags:
+        - Users
+      summary: Create user details
+      description: Create detailed profile information for the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDetailsDto'
+      responses:
+        '201':
+          description: User details created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      tags:
+        - Users
+      summary: Get user details
+      description: Retrieve detailed profile information for the authenticated user
+      responses:
+        '200':
+          description: User details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '404':
+          description: User details not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Users
+      summary: Update user details
+      description: Update detailed profile information for the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDetailsDto'
+      responses:
+        '200':
+          description: User details updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Feedback Endpoints
+  /feedback:
+    post:
+      tags:
+        - Feedback
+      summary: Create feedback
+      description: Submit feedback or report an issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFeedbackDto'
+      responses:
+        '201':
+          description: Feedback created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /feedback/my-feedbacks:
+    get:
+      tags:
+        - Feedback
+      summary: Get user's feedbacks
+      description: Retrieve all feedback submitted by the authenticated user
+      responses:
+        '200':
+          description: User feedbacks retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Feedback'
+
+  /feedback/my-feedbacks/{id}:
+    get:
+      tags:
+        - Feedback
+      summary: Get specific user feedback
+      description: Retrieve a specific feedback by ID for the authenticated user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Feedback ID
+      responses:
+        '200':
+          description: Feedback retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '404':
+          description: Feedback not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /feedback/admin:
+    get:
+      tags:
+        - Feedback
+      summary: Get all feedbacks (Admin only)
+      description: Retrieve all feedback with optional filtering
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, completed, rejected]
+          description: Filter by feedback status
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by user ID
+      responses:
+        '200':
+          description: All feedbacks retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Feedback'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /feedback/admin/{id}:
+    get:
+      tags:
+        - Feedback
+      summary: Get feedback by ID (Admin only)
+      description: Retrieve a specific feedback by ID
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Feedback ID
+      responses:
+        '200':
+          description: Feedback retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '404':
+          description: Feedback not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Feedback
+      summary: Update feedback status (Admin only)
+      description: Update the status and admin response for feedback
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Feedback ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFeedbackStatusDto'
+      responses:
+        '200':
+          description: Feedback updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Feedback
+      summary: Delete feedback (Admin only)
+      description: Delete a feedback entry
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Feedback ID
+      responses:
+        '200':
+          description: Feedback deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Admin Endpoints - Subjects
+  /admin/subjects:
+    get:
+      tags:
+        - Admin - Subjects
+      summary: Get all subjects (Admin only)
+      description: Retrieve all subjects in the system
+      security:
+        - AdminAuth: []
+      responses:
+        '200':
+          description: Subjects retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Subject'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Admin - Subjects
+      summary: Create subject (Admin only)
+      description: Create a new subject
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectDto'
+      responses:
+        '201':
+          description: Subject created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/subjects/{id}:
+    get:
+      tags:
+        - Admin - Subjects
+      summary: Get subject by ID (Admin only)
+      description: Retrieve a specific subject by ID
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject ID
+      responses:
+        '200':
+          description: Subject retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Admin - Subjects
+      summary: Update subject (Admin only)
+      description: Update an existing subject
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubjectDto'
+      responses:
+        '200':
+          description: Subject updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin - Subjects
+      summary: Delete subject (Admin only)
+      description: Delete a subject from the system
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject ID
+      responses:
+        '200':
+          description: Subject deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Admin Endpoints - Topics
+  /admin/topics:
+    post:
+      tags:
+        - Admin - Topics
+      summary: Add topic to subject (Admin only)
+      description: Add a new topic to an existing subject
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddTopicDto'
+      responses:
+        '201':
+          description: Topic added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Admin - Topics
+      summary: Update topic (Admin only)
+      description: Update an existing topic
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTopicDto'
+      responses:
+        '200':
+          description: Topic updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin - Topics
+      summary: Delete topic (Admin only)
+      description: Delete a topic from a subject
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: subjectId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Subject ID
+        - name: topicId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Topic ID
+      responses:
+        '200':
+          description: Topic deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Admin Endpoints - Quizzes
+  /admin/quizzes:
+    get:
+      tags:
+        - Admin - Quizzes
+      summary: Get all quizzes (Admin only)
+      description: Retrieve all quizzes with optional filtering
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: subjectId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by subject ID
+        - name: topicId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by topic ID
+        - name: noOfQuestions
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Number of questions to return
+      responses:
+        '200':
+          description: Quizzes retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Quiz'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Admin - Quizzes
+      summary: Create quiz (Admin only)
+      description: Create a new quiz question
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuizDto'
+      responses:
+        '201':
+          description: Quiz created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/quizzes/{id}:
+    get:
+      tags:
+        - Admin - Quizzes
+      summary: Get quiz by ID (Admin only)
+      description: Retrieve a specific quiz by ID
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Quiz ID
+      responses:
+        '200':
+          description: Quiz retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '404':
+          description: Quiz not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Admin - Quizzes
+      summary: Update quiz (Admin only)
+      description: Update an existing quiz
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Quiz ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuizDto'
+      responses:
+        '200':
+          description: Quiz updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin - Quizzes
+      summary: Delete quiz (Admin only)
+      description: Delete a quiz from the system
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Quiz ID
+      responses:
+        '200':
+          description: Quiz deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for user authentication
+    AdminAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for admin authentication
+
+  schemas:
+    # Authentication DTOs
+    LoginDto:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          description: User's password (minimum 8 characters)
+          example: "password123"
+
+    RegisterDto:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "newuser@example.com"
+        password:
+          type: string
+          minLength: 8
+          description: User's password (minimum 8 characters)
+          example: "securepassword123"
+
+    # User Models
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: User's unique identifier
+          example: "507f1f77bcf86cd799439011"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        role:
+          type: string
+          description: User's role in the system
+          example: "student"
+        userDetails:
+          type: string
+          description: Reference to user details
+          example: "507f1f77bcf86cd799439012"
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    # Chat Models
+    ChatQueryDto:
+      type: object
+      required:
+        - subject
+        - query
+      properties:
+        subject:
+          type: string
+          description: Subject for the educational query
+          example: "Physics"
+        query:
+          type: string
+          description: User's question or query
+          example: "Explain Newton's laws of motion"
+
+    QueryResponse:
+      type: object
+      properties:
+        query:
+          type: string
+          description: User's original query
+        response:
+          type: string
+          description: AI-generated response
+        tokensUsed:
+          type: integer
+          description: Number of tokens consumed
+        summary:
+          type: string
+          description: Summary of the interaction
+        _id:
+          type: string
+          description: Unique identifier for the query-response pair
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubjectWise:
+      type: object
+      properties:
+        subject:
+          type: string
+          description: Subject name
+          example: "Mathematics"
+        queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryResponse'
+
+    ChatHistory:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique identifier
+        userId:
+          type: string
+          description: User's unique identifier
+        date:
+          type: string
+          description: Date of the chat session
+          example: "2024-01-15"
+        subjectWise:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectWise'
+        totalTokensSpent:
+          type: integer
+          description: Total tokens consumed in the session
+        subjects:
+          type: array
+          items:
+            type: string
+          description: List of subjects discussed
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChatHistoryHeatMap:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date of activity
+        subjects:
+          type: array
+          items:
+            type: string
+          description: Subjects studied on this date
+
+    # User DTOs and Models
+    UserDto:
+      type: object
+      required:
+        - id
+        - email
+        - password
+        - role
+      properties:
+        id:
+          type: string
+          description: User's unique identifier
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          minLength: 8
+          description: User's password
+        role:
+          type: string
+          description: User's role
+
+    CreateUserDetailsDto:
+      type: object
+      required:
+        - dob
+        - name
+        - phoneno
+        - schoolName
+        - class
+      properties:
+        userID:
+          type: string
+          description: User's unique identifier (optional)
+        dob:
+          type: string
+          description: Date of birth
+          example: "2000-01-15"
+        name:
+          type: string
+          description: Full name
+          example: "John Doe"
+        phoneno:
+          type: string
+          description: Phone number
+          example: "+1234567890"
+        schoolName:
+          type: string
+          description: School name
+          example: "Springfield High School"
+        class:
+          type: string
+          description: Class or grade
+          example: "12th Grade"
+        subjects:
+          type: array
+          items:
+            type: string
+          description: List of subjects
+          example: ["Mathematics", "Physics", "Chemistry"]
+        profileImage:
+          type: string
+          description: Profile image URL or base64 data
+
+    UserDetails:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique identifier
+        userID:
+          type: string
+          description: Reference to User
+        dob:
+          type: string
+          description: Date of birth
+        name:
+          type: string
+          description: Full name
+        phoneno:
+          type: string
+          description: Phone number
+        schoolName:
+          type: string
+          description: School name
+        class:
+          type: string
+          description: Class or grade
+        subjects:
+          type: array
+          items:
+            type: string
+          description: List of subjects
+        profileImage:
+          type: string
+          description: Profile image URL
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # Feedback DTOs and Models
+    CreateFeedbackDto:
+      type: object
+      required:
+        - title
+        - description
+      properties:
+        title:
+          type: string
+          description: Feedback title
+          example: "Bug Report: Chat not working"
+        description:
+          type: string
+          description: Detailed feedback description
+          example: "The chat feature is not responding when I submit a query."
+
+    UpdateFeedbackStatusDto:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [pending, completed, rejected]
+          description: Feedback status
+        adminResponse:
+          type: string
+          description: Admin's response to the feedback
+
+    Feedback:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique identifier
+        title:
+          type: string
+          description: Feedback title
+        description:
+          type: string
+          description: Feedback description
+        userId:
+          type: string
+          description: User who submitted the feedback
+        userName:
+          type: string
+          description: Name of the user who submitted feedback
+        status:
+          type: string
+          enum: [pending, completed, rejected]
+          description: Current status of the feedback
+        adminResponse:
+          type: string
+          description: Admin's response
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # Subject DTOs and Models
+    TopicDto:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Topic name
+          example: "Quadratic Equations"
+        description:
+          type: string
+          description: Topic description
+          example: "Learn about solving quadratic equations"
+
+    SubjectDto:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Subject name
+          example: "Mathematics"
+        description:
+          type: string
+          description: Subject description
+          example: "Mathematical concepts and problem solving"
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopicDto'
+          description: List of topics in the subject
+
+    UpdateSubjectDto:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Subject name
+        description:
+          type: string
+          description: Subject description
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopicDto'
+          description: List of topics in the subject
+
+    AddTopicDto:
+      type: object
+      required:
+        - subjectId
+        - topic
+      properties:
+        subjectId:
+          type: string
+          description: Subject ID to add topic to
+        topic:
+          $ref: '#/components/schemas/TopicDto'
+
+    UpdateTopicDto:
+      type: object
+      required:
+        - subjectId
+        - topicId
+        - topic
+      properties:
+        subjectId:
+          type: string
+          description: Subject ID
+        topicId:
+          type: string
+          description: Topic ID to update
+        topic:
+          $ref: '#/components/schemas/TopicDto'
+
+    Subject:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique identifier
+        name:
+          type: string
+          description: Subject name
+        description:
+          type: string
+          description: Subject description
+        topics:
+          type: array
+          items:
+            type: object
+            properties:
+              _id:
+                type: string
+                description: Topic ID
+              name:
+                type: string
+                description: Topic name
+              description:
+                type: string
+                description: Topic description
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # Quiz DTOs and Models
+    OptionDto:
+      type: object
+      required:
+        - text
+        - isCorrect
+      properties:
+        text:
+          type: string
+          description: Option text
+          example: "x = 2 or x = -3"
+        isCorrect:
+          type: boolean
+          description: Whether this option is correct
+          example: true
+
+    CreateQuizDto:
+      type: object
+      required:
+        - question
+        - options
+        - subjectId
+        - topicId
+      properties:
+        question:
+          type: string
+          description: Quiz question
+          example: "Solve the equation x² + x - 6 = 0"
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptionDto'
+          description: List of answer options
+        subjectId:
+          type: string
+          description: Subject ID this quiz belongs to
+        topicId:
+          type: string
+          description: Topic ID this quiz belongs to
+        type:
+          type: string
+          description: Quiz type
+          example: "multiple-choice"
+        difficulty:
+          type: integer
+          description: Difficulty level (1-5)
+          example: 3
+
+    UpdateQuizDto:
+      type: object
+      properties:
+        question:
+          type: string
+          description: Quiz question
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptionDto'
+          description: List of answer options
+        type:
+          type: string
+          description: Quiz type
+        difficulty:
+          type: integer
+          description: Difficulty level (1-5)
+
+    Quiz:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique identifier
+        question:
+          type: string
+          description: Quiz question
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+                description: Option text
+              isCorrect:
+                type: boolean
+                description: Whether this option is correct
+        subjectId:
+          type: string
+          description: Subject ID
+        topicId:
+          type: string
+          description: Topic ID
+        type:
+          type: string
+          description: Quiz type
+        difficulty:
+          type: integer
+          description: Difficulty level
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # Error Model
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+        statusCode:
+          type: integer
+          description: HTTP status code
+        error:
+          type: string
+          description: Error type

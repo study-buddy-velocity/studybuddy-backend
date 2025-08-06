@@ -1,21 +1,36 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
-import { MongooseModule } from '@nestjs/mongoose';
-import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { ChatModule } from './chat/chat.module';
+import { AdminModule } from './admin/admin.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { LeaderboardModule } from './leaderboard/leaderboard.module';
 
 @Module({
-  imports: [AuthModule,
+  imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    MongooseModule.forRoot(process.env.MONGODB_CONNECTION_STRING,
-      {dbName: 'studybuddy'}),
+    MongooseModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => {
+        const uri = configService.get<string>('MONGODB_CONNECTION_STRING');
+        ////console.log('MongoDB URI:', uri); // Log the URI for debugging
+        return { uri };
+      },
+      inject: [ConfigService],
+    }),
+    AuthModule,
     UsersModule,
-    ChatModule],
+    ChatModule,
+    AdminModule,
+    FeedbackModule,
+    LeaderboardModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

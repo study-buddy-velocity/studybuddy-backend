@@ -5,6 +5,7 @@ import { User } from 'src/schemas/user.schema';
 import { UserDto } from 'src/dtos/user.dto';
 import { CreateUserDetailsDto } from 'src/dtos/createUserDetailsDto';
 import { UserDetails } from 'src/schemas/userDetails.schema';
+import { Subject } from 'src/schemas/subject.schema';
 import { encryptData, encryptkeyString } from 'src/utils/encrypt_decrypt';
 
 @Injectable()
@@ -12,12 +13,14 @@ export class UsersService {
 
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
-        @InjectModel(UserDetails.name) private userDetailsModel: Model<UserDetails>
+        @InjectModel(UserDetails.name) private userDetailsModel: Model<UserDetails>,
+        @InjectModel(Subject.name) private subjectModel: Model<Subject>
     ) {}
 
     async getAllUsers(): Promise<User[]> {
         return this.userModel.find().exec();
       }
+      
 
       async updateUser(id: string, updateData: UserDto): Promise<User> {
         // Encrypt the password
@@ -136,5 +139,48 @@ export class UsersService {
     await userDetails.save();
 
     return userDetails;
+  }
+
+  // Helper function to map class names to class IDs
+  private getClassIdFromClassName(className: string): string | null {
+    const classMapping: { [key: string]: string } = {
+      '6th Standard': '6th',
+      '7th Standard': '7th',
+      '8th Standard': '8th',
+      '9th Standard': '9th',
+      '10th Standard': '10th',
+      '11th Standard': '11th',
+      '12th Standard': '12th'
+    };
+    return classMapping[className] || null;
+  }
+
+  // Get subjects filtered by user's class
+  async getSubjectsForUser(userId: string): Promise<Subject[]> {
+    try {
+      // Get user's class
+      const userDetails = await this.getUserDetailsByUserId(userId);
+      const userClass = (userDetails as any).class;
+      const userClassId = userClass ? this.getClassIdFromClassName(userClass) : null;
+
+      // Get all subjects
+      const subjects = await this.subjectModel.find().exec();
+
+      // Filter topics by user's class
+      if (userClassId) {
+        return subjects.map(subject => ({
+          ...subject.toObject(),
+          topics: subject.topics.filter(topic =>
+            !topic.classId || topic.classId === userClassId
+          )
+        })) as Subject[];
+      }
+
+      return subjects;
+    } catch (error) {
+      console.error('Error getting subjects for user:', error);
+      // Fallback to all subjects if there's an error
+      return this.subjectModel.find().exec();
+    }
   }
 }

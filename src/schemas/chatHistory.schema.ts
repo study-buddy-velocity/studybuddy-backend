@@ -14,6 +14,9 @@ export class QueryResponse {
 
   @Prop({ required: true })
   tokensUsed: number;
+
+  @Prop({ required: false })
+  summary: string;
 }
 
 @Schema() export class SubjectWise {
