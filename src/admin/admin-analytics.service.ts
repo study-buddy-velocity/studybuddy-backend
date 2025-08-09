@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { User } from 'src/schemas/user.schema';
 import { UserDetails } from 'src/schemas/userDetails.schema';
 import { ChatHistory } from 'src/schemas/chatHistory.schema';
+import { QuizAttempt } from 'src/schemas/quiz-attempt.schema';
 
 @Injectable()
 export class AdminAnalyticsService {
@@ -11,6 +12,7 @@ export class AdminAnalyticsService {
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(UserDetails.name) private userDetailsModel: Model<UserDetails>,
     @InjectModel(ChatHistory.name) private chatHistoryModel: Model<ChatHistory>,
+    @InjectModel(QuizAttempt.name) private quizAttemptModel: Model<QuizAttempt>,
   ) {}
 
   async getStudentAnalytics(userId: string) {
@@ -111,36 +113,88 @@ export class AdminAnalyticsService {
   }
 
   private async calculateQuizStats(userId: string, chatHistory: any[]) {
-    // Mock quiz statistics - you can implement actual quiz tracking
-    const subjectWiseAttempts = {
-      'Mathematics': Math.floor(Math.random() * 10) + 1,
-      'Physics': Math.floor(Math.random() * 8) + 1,
-      'Chemistry': Math.floor(Math.random() * 6) + 1,
-      'Biology': Math.floor(Math.random() * 5) + 1
-    };
+    try {
+      // Get all quiz attempts for this user
+      const quizAttempts = await this.quizAttemptModel
+        .find({ userId })
+        .populate('subjectId', 'name')
+        .sort({ createdAt: -1 })
+        .exec();
 
-    const totalAttempted = Object.values(subjectWiseAttempts).reduce((sum, count) => sum + count, 0);
-    
-    const averageScores = {
-      'Mathematics': Math.random() * 0.4 + 0.6, // 60-100%
-      'Physics': Math.random() * 0.4 + 0.6,
-      'Chemistry': Math.random() * 0.4 + 0.6,
-      'Biology': Math.random() * 0.4 + 0.6
-    };
+      // If no quiz attempts, return empty stats
+      if (!quizAttempts || quizAttempts.length === 0) {
+        return {
+          totalAttempted: 0,
+          accuracy: 0,
+          subjectWiseAttempts: {},
+          averageScores: {},
+          lastQuizDate: 'No quizzes taken yet',
+          topicsCompleted: 0
+        };
+      }
 
-    const accuracy = Object.values(averageScores).reduce((sum, score) => sum + score, 0) / Object.keys(averageScores).length * 100;
+      // Calculate statistics from real quiz attempts
+      const totalAttempted = quizAttempts.length;
+      const totalCorrect = quizAttempts.reduce((sum, attempt) => sum + attempt.correctAnswers, 0);
+      const totalQuestions = quizAttempts.reduce((sum, attempt) => sum + attempt.totalQuestions, 0);
+      const accuracy = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
 
-    const lastQuizDate = chatHistory.length > 0 ? 
-      new Date(chatHistory[chatHistory.length - 1].createdAt).toLocaleDateString() : 'N/A';
+      // Calculate subject-wise attempts and scores
+      const subjectWiseAttempts: { [key: string]: number } = {};
+      const subjectWiseScores: { [key: string]: number[] } = {};
 
-    return {
-      totalAttempted,
-      accuracy: Math.round(accuracy),
-      subjectWiseAttempts,
-      averageScores,
-      lastQuizDate,
-      topicsCompleted: Math.floor(totalAttempted * 0.8) // Estimate
-    };
+      quizAttempts.forEach(attempt => {
+        // Use the subject ID as string for consistent mapping
+        const subjectId = (attempt.subjectId as any)._id ? (attempt.subjectId as any)._id.toString() : attempt.subjectId.toString();
+
+        // Count attempts per subject
+        subjectWiseAttempts[subjectId] = (subjectWiseAttempts[subjectId] || 0) + 1;
+
+        // Collect scores per subject
+        if (!subjectWiseScores[subjectId]) {
+          subjectWiseScores[subjectId] = [];
+        }
+        subjectWiseScores[subjectId].push(attempt.score / 100); // Convert percentage to decimal
+      });
+
+      // Calculate average scores per subject
+      const averageScores: { [key: string]: number } = {};
+      Object.keys(subjectWiseScores).forEach(subjectId => {
+        const scores = subjectWiseScores[subjectId];
+        averageScores[subjectId] = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+      });
+
+      // Get last quiz date
+      const lastQuizDate = quizAttempts.length > 0 ?
+        new Date((quizAttempts[0] as any).createdAt).toLocaleDateString() : 'No quizzes taken yet';
+
+      // Calculate topics completed (unique subject-topic combinations)
+      const uniqueTopics = new Set();
+      quizAttempts.forEach(attempt => {
+        uniqueTopics.add(`${attempt.subjectId}-${attempt.topicId}`);
+      });
+
+      return {
+        totalAttempted,
+        accuracy,
+        subjectWiseAttempts,
+        averageScores,
+        lastQuizDate,
+        topicsCompleted: uniqueTopics.size
+      };
+
+    } catch (error) {
+      console.error('Error calculating quiz stats:', error);
+      // Return empty stats on error
+      return {
+        totalAttempted: 0,
+        accuracy: 0,
+        subjectWiseAttempts: {},
+        averageScores: {},
+        lastQuizDate: 'No quizzes taken yet',
+        topicsCompleted: 0
+      };
+    }
   }
 
   private async calculateLeaderboardStats(userId: string, chatHistory: any[]) {
@@ -152,19 +206,55 @@ export class AdminAnalyticsService {
     }, 0);
 
     const streak = this.calculateStreak(chatHistory);
-    
+
     // Calculate spark points using similar logic to leaderboard service
     const sparkPoints = Math.floor(
       (totalTokens / 100 + totalQueries * 5) * Math.min(1 + streak * 0.1, 2)
     );
 
-    // Mock rank calculation - you can implement actual ranking
-    const currentRank = Math.floor(Math.random() * 50) + 1;
-    const rankMovement = Math.random() > 0.5 ? `+${Math.floor(Math.random() * 5) + 1}` : `-${Math.floor(Math.random() * 3) + 1}`;
-    
-    let motivationLevel = 'Low';
-    if (sparkPoints > 500) motivationLevel = 'High';
-    else if (sparkPoints > 200) motivationLevel = 'Medium';
+    // Calculate actual rank based on spark points (no random generation)
+    let currentRank = 0;
+    let rankMovement = 'No rank yet';
+
+    try {
+      // Only show rank if user has significant activity
+      if (sparkPoints > 0) {
+        // Get all users' spark points to calculate real rank
+        // For now, estimate based on spark points thresholds
+        const allUsers = await this.userModel.find({}).exec();
+        let usersWithHigherPoints = 0;
+
+        // This is a simplified ranking - in production you'd want to cache this
+        for (const user of allUsers) {
+          const userChatHistory = await this.chatHistoryModel.find({ userId: user._id }).exec();
+          const userTotalTokens = userChatHistory.reduce((sum, day) => sum + (day.totalTokensSpent || 0), 0);
+          const userTotalQueries = userChatHistory.reduce((sum, day) => {
+            return sum + (day.subjectWise?.reduce((daySum: number, subject: any) => {
+              return daySum + (subject.queries?.length || 0);
+            }, 0) || 0);
+          }, 0);
+          const userStreak = this.calculateStreak(userChatHistory);
+          const userSparkPoints = Math.floor(
+            (userTotalTokens / 100 + userTotalQueries * 5) * Math.min(1 + userStreak * 0.1, 2)
+          );
+
+          if (userSparkPoints > sparkPoints) {
+            usersWithHigherPoints++;
+          }
+        }
+
+        currentRank = usersWithHigherPoints + 1;
+        rankMovement = sparkPoints > 300 ? 'Rising' : sparkPoints > 100 ? 'Stable' : 'Getting started';
+      }
+    } catch (error) {
+      console.error('Error calculating rank:', error);
+      currentRank = 0;
+    }
+
+    let motivationLevel = 'Getting started';
+    if (sparkPoints > 800) motivationLevel = 'High Achiever';
+    else if (sparkPoints > 400) motivationLevel = 'Rising Star';
+    else if (sparkPoints > 100) motivationLevel = 'Building Momentum';
 
     return {
       currentRank,

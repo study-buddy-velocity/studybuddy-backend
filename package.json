@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "create-admin": "ts-node -r tsconfig-paths/register src/scripts/create-admin.ts"
+    "create-admin": "ts-node -r tsconfig-paths/register src/scripts/create-admin.ts",
+    "create-sample-quiz-attempts": "ts-node -r tsconfig-paths/register src/scripts/create-sample-quiz-attempts.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^3.1.3",

@@ -12,6 +12,7 @@ import { ChatHistory, ChatHistorySchema } from 'src/schemas/chatHistory.schema';
 import { JwtModule } from '@nestjs/jwt';
 import jwtConfig from 'src/config/jwtConfig';
 import { Quiz, QuizSchema } from 'src/schemas/quiz.schema';
+import { QuizAttempt, QuizAttemptSchema } from 'src/schemas/quiz-attempt.schema';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { Quiz, QuizSchema } from 'src/schemas/quiz.schema';
     MongooseModule.forFeature([
       { name: Subject.name, schema: SubjectSchema },
       { name: Quiz.name, schema: QuizSchema },
+      { name: QuizAttempt.name, schema: QuizAttemptSchema },
       { name: User.name, schema: UserSchema },
       { name: UserDetails.name, schema: UserDetailsSchema },
       { name: ChatHistory.name, schema: ChatHistorySchema }

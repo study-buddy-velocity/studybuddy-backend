@@ -10,10 +10,20 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+
+  // Set global prefix for all routes
+  app.setGlobalPrefix('api');
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL') || 'http://localhost:3001',
+    origin: [
+      'http://localhost:3001', // Development frontend
+      'http://localhost:3000', // Alternative development port
+      configService.get<string>('FRONTEND_URL'), // Environment-specific frontend
+      'http://51.21.251.67', // Your deployed server IP
+      'https://51.21.251.67', // HTTPS version if needed
+    ].filter(Boolean), // Remove any undefined values
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, 
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
   });
   app.useGlobalPipes(
     new ValidationPipe({
