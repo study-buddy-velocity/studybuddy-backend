@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Query } fro
 import { AdminService } from './admin.service';
 import { AdminGuard } from 'src/guard/admin.guard';
 import { SubjectDto, UpdateSubjectDto, AddTopicDto, UpdateTopicDto } from 'src/dtos/subject.dto';
-import { CreateQuizDto, UpdateQuizDto, QuizFilterDto } from 'src/dtos/quiz.dto';
+import { CreateQuizDto, UpdateQuizDto, QuizFilterDto, BulkCreateQuizDto } from 'src/dtos/quiz.dto';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -42,9 +42,8 @@ export class AdminController {
   @Post('subjects/:subjectId/topics')
   async addTopicForSubject(
     @Param('subjectId') subjectId: string,
-    @Body() topic: { name: string; description?: string }
+    @Body() topic: { name: string; description?: string; classId?: string }
   ) {
-    // Compose AddTopicDto
     const addTopicDto = { subjectId, topic };
     return this.adminService.addTopic(addTopicDto);
   }
@@ -72,6 +71,11 @@ export class AdminController {
   @Post('quizzes')
   async createQuiz(@Body() createQuizDto: CreateQuizDto) {
     return this.adminService.createQuiz(createQuizDto);
+  }
+
+  @Post('quizzes/bulk')
+  async createBulkQuizzes(@Body() bulkCreateQuizDto: BulkCreateQuizDto) {
+    return this.adminService.createBulkQuizzes(bulkCreateQuizDto);
   }
 
   @Get('quizzes')

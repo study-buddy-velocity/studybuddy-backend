@@ -90,8 +90,17 @@ export class AdminAnalyticsService {
       subjectCounts[a] > subjectCounts[b] ? a : b, 'N/A'
     );
 
-    // Calculate time spent (rough estimate based on tokens)
-    const totalTimeMinutes = Math.floor(totalTokens / 10); // Rough estimate: 10 tokens per minute
+    // Calculate time spent (more realistic estimate based on tokens)
+    // Assumptions:
+    // - Average reading speed: ~250 words/minute
+    // - Average tokens per word: ~1.3
+    // - So ~325 tokens/minute for reading
+    // - Add processing/thinking time: use ~200 tokens/minute as realistic estimate
+    // - Also add base time per query for thinking/typing: ~2 minutes per query
+    const baseTimePerQuery = 2; // minutes per query for thinking/typing
+    const queryTime = totalMessages * baseTimePerQuery;
+    const readingTime = Math.floor(totalTokens / 200); // More realistic: 200 tokens per minute
+    const totalTimeMinutes = Math.floor(queryTime + readingTime);
     const hours = Math.floor(totalTimeMinutes / 60);
     const minutes = totalTimeMinutes % 60;
     const totalTimeSpent = `${hours}hr ${minutes}min`;

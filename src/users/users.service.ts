@@ -20,7 +20,7 @@ export class UsersService {
     async getAllUsers(): Promise<User[]> {
         return this.userModel.find().exec();
       }
-      
+
 
       async updateUser(id: string, updateData: UserDto): Promise<User> {
         // Encrypt the password
@@ -29,11 +29,11 @@ export class UsersService {
         const updatedUser = await this.userModel.findByIdAndUpdate(id, updateData, {
           new: true,
         }).exec();
-    
+
         if (!updatedUser) {
           throw new NotFoundException(`User with ID ${id} not found`);
         }
-    
+
         return updatedUser;
       }
 
@@ -89,7 +89,7 @@ export class UsersService {
         } else {
           throw new NotAcceptableException(`User details already exists with id ${userId} not found`);
         }
-        
+
     }
 
     async getUserDetailsByUserId(userId: string) {
@@ -98,7 +98,7 @@ export class UsersService {
         .findById(userId) // Populate the userDetails reference
         .populate('userDetails')
         .exec();
-        
+
       if (!user) {
         throw new NotFoundException(`User with ID ${userId} not found`);
       }
@@ -106,7 +106,7 @@ export class UsersService {
       if (!user.userDetails) {
         throw new NotFoundException(`UserDetails for user with ID ${userId} not found`);
       }
-      
+
       return user.userDetails.toJSON(); // Return the UserDetails
     }
 
@@ -183,4 +183,31 @@ export class UsersService {
       return this.subjectModel.find().exec();
     }
   }
+
+  // Get a single subject by ID filtered by user's class
+  async getSubjectByIdForUser(userId: string, subjectId: string): Promise<Subject> {
+    // Get user's class
+    const userDetails = await this.getUserDetailsByUserId(userId);
+    const userClass = (userDetails as any).class;
+    const userClassId = userClass ? this.getClassIdFromClassName(userClass) : null;
+
+    // Fetch subject
+    const subject = await this.subjectModel.findById(subjectId).exec();
+    if (!subject) {
+      throw new NotFoundException(`Subject with ID ${subjectId} not found`);
+    }
+
+    if (!userClassId) {
+      return subject;
+    }
+
+    // Filter topics by user's class (allow topics with no classId for backward compatibility)
+    const filtered = {
+      ...subject.toObject(),
+      topics: subject.topics.filter(topic => !topic.classId || topic.classId === userClassId)
+    } as unknown as Subject;
+
+    return filtered;
+  }
+
 }

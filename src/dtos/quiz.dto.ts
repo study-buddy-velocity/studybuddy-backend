@@ -39,6 +39,17 @@ export class CreateQuizDto {
   @IsString()
   @IsOptional()
   explanation?: string;
+
+  @IsString()
+  @IsOptional()
+  classId?: string;
+}
+
+export class BulkCreateQuizDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuizDto)
+  questions: CreateQuizDto[];
 }
 
 export class UpdateQuizDto {
@@ -73,6 +84,10 @@ export class QuizFilterDto {
   @IsString()
   @IsOptional()
   topicId?: string;
+
+  @IsString()
+  @IsOptional()
+  classId?: string;
   
   @IsNumber()
   @IsOptional()

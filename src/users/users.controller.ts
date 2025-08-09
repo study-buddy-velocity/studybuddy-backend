@@ -108,7 +108,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Get subject by ID for users' })
   @ApiResponse({ status: 200, description: 'Subject details', type: Subject })
   @Get('subjects/:id')
-  async getSubjectByIdForUsers(@Param('id') id: string): Promise<Subject> {
-    return this.adminService.getSubjectById(id);
+  async getSubjectByIdForUsers(@Req() req, @Param('id') id: string): Promise<Subject> {
+    return this.usersService.getSubjectByIdForUser(req['userID'], id);
   }
 }

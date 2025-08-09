@@ -4,7 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Subject } from 'src/schemas/subject.schema';
 import { Quiz } from 'src/schemas/quiz.schema';
 import { SubjectDto, UpdateSubjectDto, AddTopicDto, UpdateTopicDto } from 'src/dtos/subject.dto';
-import { CreateQuizDto, UpdateQuizDto, QuizFilterDto } from 'src/dtos/quiz.dto';
+import { CreateQuizDto, UpdateQuizDto, QuizFilterDto, BulkCreateQuizDto } from 'src/dtos/quiz.dto';
 
 @Injectable()
 export class AdminService {
@@ -92,7 +92,8 @@ export class AdminService {
     const updatedTopic = {
       ...subject.topics[topicIndex].toObject(),
       name: updateTopicDto.topic.name,
-      description: updateTopicDto.topic.description
+      description: updateTopicDto.topic.description,
+      ...(typeof (updateTopicDto as any).topic.classId !== 'undefined' ? { classId: (updateTopicDto as any).topic.classId } : {})
     };
     
     // Replace the topic at the specified index
@@ -146,15 +147,81 @@ export class AdminService {
     return newQuiz.save();
   }
 
+  async createBulkQuizzes(bulkCreateQuizDto: BulkCreateQuizDto): Promise<{ success: boolean; created: number; errors: string[] }> {
+    const results = {
+      success: true,
+      created: 0,
+      errors: []
+    };
+
+    for (let i = 0; i < bulkCreateQuizDto.questions.length; i++) {
+      const questionDto = bulkCreateQuizDto.questions[i];
+      try {
+        // Validate subject exists
+        const subject = await this.subjectModel.findById(questionDto.subjectId).exec();
+        if (!subject) {
+          results.errors.push(`Row ${i + 1}: Subject with ID ${questionDto.subjectId} not found`);
+          continue;
+        }
+
+        // Validate topic exists
+        const topicExists = subject.topics.some(
+          topic => topic._id.toString() === questionDto.topicId
+        );
+        if (!topicExists) {
+          results.errors.push(`Row ${i + 1}: Topic with ID ${questionDto.topicId} not found in subject`);
+          continue;
+        }
+
+        // Validate at least one correct answer
+        const hasCorrectAnswer = questionDto.options.some(option => option.isCorrect);
+        if (!hasCorrectAnswer) {
+          results.errors.push(`Row ${i + 1}: Quiz must have at least one correct answer`);
+          continue;
+        }
+
+        const newQuiz = new this.quizModel(questionDto);
+        await newQuiz.save();
+        results.created++;
+      } catch (error) {
+        results.errors.push(`Row ${i + 1}: ${error.message}`);
+      }
+    }
+
+    if (results.errors.length > 0) {
+      results.success = false;
+    }
+
+    return results;
+  }
+
   async getAllQuizzes(filterDto: QuizFilterDto): Promise<Quiz[]> {
     const filter: any = {};
-    
+
     if (filterDto.subjectId) {
       filter.subjectId = filterDto.subjectId;
     }
-    
+
     if (filterDto.topicId) {
       filter.topicId = filterDto.topicId;
+    }
+
+    if (filterDto.classId) {
+      // Accept quizzes tagged with the requested class ID, or with no/empty class.
+      // Also accept entries that used the class name (e.g., '6th Standard') for backward compatibility.
+      const classNameFromId: Record<string, string> = {
+        '6th': '6th Standard', '7th': '7th Standard', '8th': '8th Standard',
+        '9th': '9th Standard', '10th': '10th Standard', '11th': '11th Standard', '12th': '12th Standard'
+      };
+      const requested = filterDto.classId;
+      const legacyName = classNameFromId[requested];
+
+      const allowedValues = [requested, legacyName, null, ''].filter(v => v !== undefined);
+
+      filter.$or = [
+        { classId: { $in: allowedValues } },
+        { classId: { $exists: false } },
+      ];
     }
     
     let query = this.quizModel.find(filter);

@@ -51,7 +51,13 @@ export class ChatController {
     @ApiResponse({ status: 400, description: 'Invalid query parameters' })
     @ApiResponse({ status: 401, description: 'Authentication required' })
     async getEducationalChat(@Req() req: any, @Query() query: ChatQueryDto): Promise<{ response: string }> {
+        // Log raw query to see what we're receiving
+        console.log('=== CHAT REQUEST DEBUG ===');
+        console.log('Raw query object:', JSON.stringify(query, null, 2));
+
         const queryDto = plainToInstance(ChatQueryDto, query);
+        console.log('After plainToInstance:', JSON.stringify(queryDto, null, 2));
+
         const errors = await validate(queryDto);
 
         if (errors.length > 0) {
@@ -59,6 +65,9 @@ export class ChatController {
         }
 
         const { subject, query: userQuery, topic } = queryDto;
+        console.log('Extracted values:', { subject, userQuery: userQuery?.substring(0, 30) + '...', topic });
+        console.log('Topic type:', typeof topic, 'Topic value:', topic);
+
         const response = await this.chatService.getChatResponse(req["userID"], subject, userQuery, topic);
         return { response };
     }
@@ -82,6 +91,63 @@ export class ChatController {
     @Get("heat-map")
     async getFilteredChatHistory(@Req() req, @Query('upperBound') upperBound: string, @Query('lowerBound') lowerBound: string ) {
         return await this.chatService.getFilteredChatHistory(req['userID'], lowerBound, upperBound)
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get("recent-topics")
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({
+        summary: 'Get recent topics for user',
+        description: 'Retrieve all unique topics the user has discussed'
+    })
+    @ApiResponse({ status: 200, description: 'Recent topics retrieved successfully' })
+    @ApiResponse({ status: 401, description: 'Authentication required' })
+    async getRecentTopics(@Req() req) {
+        return await this.chatService.getRecentTopics(req['userID']);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get("topic-history")
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({
+        summary: 'Get chat history for a specific topic',
+        description: 'Retrieve chat history filtered by a specific topic'
+    })
+    @ApiQuery({
+        name: 'topic',
+        description: 'The topic to filter chat history by',
+        example: 'Quadratic Equations'
+    })
+    @ApiResponse({ status: 200, description: 'Topic chat history retrieved successfully' })
+    @ApiResponse({ status: 401, description: 'Authentication required' })
+    async getTopicChatHistory(@Req() req, @Query('topic') topic: string) {
+        return await this.chatService.getTopicChatHistory(req['userID'], topic);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get("extract-topics")
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({
+        summary: 'Extract potential topics from existing chat history',
+        description: 'Analyze existing chat history to identify potential topics for testing'
+    })
+    @ApiResponse({ status: 200, description: 'Topics extracted successfully' })
+    @ApiResponse({ status: 401, description: 'Authentication required' })
+    async extractTopicsFromHistory(@Req() req) {
+        return await this.chatService.extractTopicsFromHistory(req['userID']);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get("debug-topics")
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({
+        summary: 'Debug topics storage',
+        description: 'Show raw chat history data to debug topic storage'
+    })
+    @ApiResponse({ status: 200, description: 'Debug data retrieved successfully' })
+    @ApiResponse({ status: 401, description: 'Authentication required' })
+    async debugTopics(@Req() req) {
+        return await this.chatService.debugTopics(req['userID']);
     }
 
     @UseGuards(JwtAuthGuard)

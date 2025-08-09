@@ -8,6 +8,10 @@ export class TopicDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  classId?: string;
 }
 
 export class SubjectDto {

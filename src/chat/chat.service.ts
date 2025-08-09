@@ -89,7 +89,7 @@ Please elaborate on the previous topic and give a clearer or deeper explanation.
             const summary = summaryMatch ? summaryMatch[1].trim() : '';
             const cleanResponse = reply.content.replace(/<summary>.*?<\/summary>/s, '').trim();
 
-            await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subject, summary);
+            await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subject, summary, topic);
 
             return cleanResponse;
         }
@@ -146,7 +146,7 @@ Student's Question: ${query}`;
         const summary = summaryMatch ? summaryMatch[1] : '';
         const cleanResponse = reply.content.replace(/<summary>.*?<\/summary>/s, '').trim();
 
-        await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subject, summary);
+        await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subject, summary, topic);
 
         return cleanResponse;
     }
@@ -158,7 +158,10 @@ Student's Question: ${query}`;
         return !bannedWords.some((word) => lowerCaseQuery.includes(word));
     }
 
-    async addQueryResponse(userId: string, query: string, response: string, tokensUsed: number, subject: string, summary: string) {
+    async addQueryResponse(userId: string, query: string, response: string, tokensUsed: number, subject: string, summary: string, topic?: string) {
+        console.log('=== ADD QUERY RESPONSE DEBUG ===');
+        console.log('Topic parameter received:', { topic, topicType: typeof topic, topicLength: topic?.length });
+
         const today = formatDate(formatTimestampToIOS(String(new Date())));
         const chatHistory = await this.chatHistoryModel.findOne({ userId, date: today });
 
@@ -171,16 +174,28 @@ Student's Question: ${query}`;
                     chatHistory.subjects.push(subject);
                 }
             }
-            subjectWise.queries.push({ query, response, tokensUsed, summary });
+            subjectWise.queries.push({ query, response, tokensUsed, summary, topic });
             chatHistory.totalTokensSpent += tokensUsed;
+
+            // Initialize topics array if it doesn't exist (for backward compatibility)
+            if (!chatHistory.topics) {
+                chatHistory.topics = [];
+            }
+
+            // Add topic to topics array if it doesn't exist and topic is provided
+            if (topic && topic.trim() !== '' && !chatHistory.topics.includes(topic)) {
+                chatHistory.topics.push(topic);
+            }
+
             await chatHistory.save();
         } else {
             await this.chatHistoryModel.create({
                 userId,
                 date: today,
-                subjectWise: [{ subject, queries: [{ query, response, tokensUsed, summary }] }],
+                subjectWise: [{ subject, queries: [{ query, response, tokensUsed, summary, topic }] }],
                 totalTokensSpent: tokensUsed,
                 subjects: [subject],
+                topics: topic ? [topic] : [],
             });
         }
     }
@@ -230,5 +245,165 @@ Student's Question: ${query}`;
                 _id: 0,
             },
         ).exec();
+    }
+
+    async getRecentTopics(userId: string) {
+        console.log(`[getRecentTopics] Fetching recent topics for user: ${userId}`);
+
+        const result = await this.chatHistoryModel.find({ userId: userId }).exec();
+        if (!result || result.length === 0) {
+            console.log(`[getRecentTopics] No chat history found for user: ${userId}`);
+            return { data: [] };
+        }
+
+        // Get topics from individual queries only (most reliable source)
+        const queryTopics = result.reduce((acc: string[], item) => {
+            const itemQueryTopics = item.subjectWise?.flatMap(subjectData =>
+                subjectData.queries
+                    .filter(query => query.topic && query.topic.trim() !== '')
+                    .map(query => query.topic.trim())
+            ) || [];
+
+            return acc.concat(itemQueryTopics);
+        }, []);
+
+        // Remove duplicates and sort by most recent (reverse chronological)
+        const uniqueTopics = [...new Set(queryTopics)].filter(topic => topic && topic.trim() !== '');
+
+        console.log(`[getRecentTopics] Found ${uniqueTopics.length} unique topics: ${uniqueTopics.join(', ')}`);
+        return { data: uniqueTopics.reverse() }; // Most recent first
+    }
+
+    async getTopicChatHistory(userId: string, topic: string) {
+        console.log(`[getTopicChatHistory] Fetching history for user: ${userId}, topic: ${topic}`);
+
+        const result = await this.chatHistoryModel.find({ userId: userId }).exec();
+        if (!result || result.length === 0) {
+            console.log(`[getTopicChatHistory] No chat history found for user: ${userId}`);
+            return { data: [] };
+        }
+
+        // Filter to get ONLY queries that have exact topic match
+        const topicHistory = result.map(chatHistory => {
+            const filteredSubjectWise = chatHistory.subjectWise.map(subjectData => ({
+                ...subjectData,
+                queries: subjectData.queries.filter(query => {
+                    // STRICT topic matching - only exact matches
+                    const hasExactTopicMatch = query.topic && query.topic.trim() === topic.trim();
+                    console.log(`[getTopicChatHistory] Query topic: "${query.topic}", Target topic: "${topic}", Match: ${hasExactTopicMatch}`);
+                    return hasExactTopicMatch;
+                })
+            })).filter(subjectData => subjectData.queries.length > 0);
+
+            return {
+                ...chatHistory.toObject(),
+                subjectWise: filteredSubjectWise
+            };
+        }).filter(chatHistory => chatHistory.subjectWise.length > 0);
+
+        console.log(`[getTopicChatHistory] Found ${topicHistory.length} days with topic "${topic}" conversations`);
+        return { data: topicHistory };
+    }
+
+    private isTopicRelated(text: string, topic: string): boolean {
+        // Simple topic matching logic - can be enhanced
+        const textWords = text.toLowerCase().split(/\s+/);
+        const topicWords = topic.toLowerCase().split(/\s+/);
+
+        // Check if any topic words appear in the text
+        return topicWords.some(topicWord =>
+            textWords.some(textWord =>
+                textWord.includes(topicWord) || topicWord.includes(textWord)
+            )
+        );
+    }
+
+    async extractTopicsFromHistory(userId: string) {
+        const result = await this.chatHistoryModel.find({ userId: userId }).exec();
+        if (result) {
+            const potentialTopics = new Set<string>();
+
+            result.forEach(chatHistory => {
+                chatHistory.subjectWise?.forEach(subjectData => {
+                    subjectData.queries.forEach(query => {
+                        // Only extract from queries that don't already have explicit topics
+                        if (query.topic && query.topic.trim() !== '') {
+                            // Skip extraction for queries that already have explicit topics
+                            return;
+                        }
+
+                        // Extract topics from query content and responses for old data only
+                        const queryContent = query.query.toLowerCase();
+                        const responseContent = query.response.toLowerCase();
+                        const summaryContent = query.summary ? query.summary.toLowerCase() : '';
+
+                        // Only extract if this looks like a main topic question, not sub-concepts
+                        if (queryContent.includes('what is addition') && !queryContent.includes('subtraction')) {
+                            potentialTopics.add('Addition');
+                        }
+                        if (queryContent.includes('what is subtraction') && !queryContent.includes('addition')) {
+                            potentialTopics.add('Subtraction');
+                        }
+                        if (queryContent.includes('what is multiplication')) {
+                            potentialTopics.add('Multiplication');
+                        }
+                        if (queryContent.includes('what is division')) {
+                            potentialTopics.add('Division');
+                        }
+                        if (queryContent.includes('what is algebra') || (queryContent.includes('algebra') && !queryContent.includes('addition') && !queryContent.includes('subtraction'))) {
+                            potentialTopics.add('Algebra');
+                        }
+                        if (queryContent.includes('what is geometry') || (queryContent.includes('geometry') && queryContent.includes('what is'))) {
+                            potentialTopics.add('Geometry');
+                        }
+
+                        // Science topics - only for direct questions
+                        if (queryContent.includes('speed of light') || queryContent.includes('what is speed')) {
+                            potentialTopics.add('Physics - Speed and Light');
+                        }
+                        if (queryContent.includes('explain') && queryContent.includes('physics') && !queryContent.includes('addition')) {
+                            potentialTopics.add('Physics Concepts');
+                        }
+
+                        // Quiz questions - only if it's the main focus
+                        if (queryContent.includes('quiz questions') || (queryContent.includes('quiz') && queryContent.includes('give me'))) {
+                            potentialTopics.add('Quiz Questions');
+                        }
+                    });
+                });
+            });
+
+            return { data: Array.from(potentialTopics) };
+        } else {
+            return { data: [] };
+        }
+    }
+
+    async debugTopics(userId: string) {
+        try {
+            const result = await this.chatHistoryModel.find({ userId: userId }).exec();
+
+            const debugData = result.map(item => ({
+                date: item.date,
+                topics: item.topics,
+                subjectWise: item.subjectWise.map(sw => ({
+                    subject: sw.subject,
+                    queries: sw.queries.map(q => ({
+                        query: q.query.substring(0, 50) + '...',
+                        topic: q.topic,
+                        hasTopicField: q.hasOwnProperty('topic')
+                    }))
+                }))
+            }));
+
+            return {
+                message: 'Debug data retrieved',
+                data: debugData,
+                totalDocuments: result.length
+            };
+        } catch (error) {
+            console.error('Error getting debug data:', error);
+            return { message: 'Error getting debug data', error: error.message };
+        }
     }
 }

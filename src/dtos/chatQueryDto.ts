@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ChatQueryDto {
@@ -24,5 +24,6 @@ export class ChatQueryDto {
     required: false
   })
   @IsString()
+  @IsOptional()
   topic?: string;
 }

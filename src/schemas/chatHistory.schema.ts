@@ -17,6 +17,9 @@ export class QueryResponse {
 
   @Prop({ required: false })
   summary: string;
+
+  @Prop({ required: false })
+  topic: string;
 }
 
 @Schema() export class SubjectWise {
@@ -43,6 +46,9 @@ export class ChatHistory {
 
   @Prop({ type: [String], required: true, default: null })
   subjects: String[]; // Subjects learned this day
+
+  @Prop({ type: [String], required: false, default: [] })
+  topics: String[]; // Topics discussed this day
 }
 
 const QueryResponseSchema = SchemaFactory.createForClass(QueryResponse);

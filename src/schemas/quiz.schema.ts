@@ -34,6 +34,9 @@ export class Quiz extends Document {
 
   @Prop({ required: false })
   explanation?: string;
+
+  @Prop({ required: false })
+  classId?: string;
 }
 
 export const QuizSchema = SchemaFactory.createForClass(Quiz);
