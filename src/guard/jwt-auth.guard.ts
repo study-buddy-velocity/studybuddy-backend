@@ -8,11 +8,11 @@ export class JwtAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     // Check if the route is marked as public
     const request = context.switchToHttp().getRequest();
-    const publicRoutes = ['/auth/login'];
+    const publicRoutes = ['/api/auth/login', '/auth/login']; // Support both with and without api prefix
 
-  if (publicRoutes.includes(request.url)) {
-    return true; // Skip guard for specific routes
-  }
+    if (publicRoutes.includes(request.url)) {
+      return true; // Skip guard for specific routes
+    }
 
     const authHeader = request.headers.authorization;
   
