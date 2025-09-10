@@ -108,7 +108,7 @@ export class AdminAnalyticsService {
     // Calculate streak (consecutive days with activity)
     const streak = this.calculateStreak(chatHistory);
 
-    // Find most active time (mock implementation)
+    // Find most active time from available timestamps (fallback to N/A if insufficient data)
     const timeOfDayMostActive = this.findMostActiveTime(chatHistory);
 
     return {
@@ -268,7 +268,7 @@ export class AdminAnalyticsService {
     return {
       currentRank,
       sparkPoints,
-      rankMovement: `${rankMovement} since last week`,
+      rankMovement: sparkPoints > 0 ? rankMovement : 'N/A',
       motivationLevel
     };
   }
@@ -312,14 +312,14 @@ export class AdminAnalyticsService {
 
     // Sort by date descending
     const sortedHistory = chatHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+
     let streak = 0;
     let currentDate = new Date();
-    
+
     for (const day of sortedHistory) {
       const dayDate = new Date(day.date);
       const diffDays = Math.floor((currentDate.getTime() - dayDate.getTime()) / (1000 * 60 * 60 * 24));
-      
+
       if (diffDays === streak) {
         streak++;
         currentDate = dayDate;
@@ -327,14 +327,30 @@ export class AdminAnalyticsService {
         break;
       }
     }
-    
+
     return streak;
   }
 
   private findMostActiveTime(chatHistory: any[]): string {
-    // Mock implementation - return a random time
-    const hours = Math.floor(Math.random() * 12) + 8; // 8 AM to 8 PM
-    return `${hours}:00`;
+    if (!chatHistory || chatHistory.length === 0) return 'No activity yet';
+
+    // Use available timestamps (createdAt) to estimate most active hour
+    const hourCounts: Record<string, number> = {};
+    for (const day of chatHistory) {
+      const created = (day as any).createdAt ? new Date(day.createdAt) : null;
+      if (created && !isNaN(created.getTime())) {
+        const hour = created.getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      }
+    }
+
+    const entries = Object.entries(hourCounts);
+    if (entries.length === 0) return 'Not available';
+    const [hour] = entries.sort((a, b) => b[1] - a[1])[0];
+    const hourNum = Number(hour);
+    const ampm = hourNum >= 12 ? 'PM' : 'AM';
+    const displayHour = ((hourNum + 11) % 12) + 1;
+    return `${displayHour}:00 ${ampm}`;
   }
 
   async generateStudentReport(userId: string, format: 'pdf' | 'excel' = 'pdf') {
@@ -378,10 +394,9 @@ export class AdminAnalyticsService {
   }
 
   private calculatePerformanceTrend(dailyActivity: any[]) {
-    return dailyActivity.slice(-30).map((day, index) => ({
-      date: day.date,
-      accuracy: Math.random() * 20 + 80, // Mock accuracy 80-100%
-      rank: Math.max(1, 50 - index) // Mock improving rank
-    }));
+    // Accurate performance trend requires quiz attempts over time.
+    // Since this service currently derives charts from chat activity, return an empty trend
+    // to avoid showing random or misleading data.
+    return [] as Array<{ date: string; accuracy?: number; rank?: number }>;
   }
 }

@@ -8,6 +8,8 @@ import jwtConfig from 'src/config/jwtConfig';
 import { UserDetailsSchema, UserDetails } from 'src/schemas/userDetails.schema';
 import { Subject, SubjectSchema } from 'src/schemas/subject.schema';
 import { AdminModule } from 'src/admin/admin.module';
+import { QuizAttempt, QuizAttemptSchema } from 'src/schemas/quiz-attempt.schema';
+import { Quiz, QuizSchema } from 'src/schemas/quiz.schema';
 
 @Module({
   imports: [
@@ -15,6 +17,8 @@ import { AdminModule } from 'src/admin/admin.module';
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     MongooseModule.forFeature([{ name: UserDetails.name, schema: UserDetailsSchema }]),
     MongooseModule.forFeature([{ name: Subject.name, schema: SubjectSchema }]),
+    MongooseModule.forFeature([{ name: QuizAttempt.name, schema: QuizAttemptSchema }]),
+    MongooseModule.forFeature([{ name: Quiz.name, schema: QuizSchema }]),
     AdminModule
   ],
   providers: [UsersService],

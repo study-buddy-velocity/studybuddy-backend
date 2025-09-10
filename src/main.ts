@@ -18,8 +18,8 @@ async function bootstrap() {
       'http://localhost:3001', // Development frontend
       'http://localhost:3000', // Alternative development port
       configService.get<string>('FRONTEND_URL'), // Environment-specific frontend
-      'http://51.21.251.67', // Your deployed server IP
-      'https://51.21.251.67', // HTTPS version if needed
+      'https://www.velociitystudybuddy.com', // Production frontend
+      'https://velociitystudybuddy.com', // HTTPS version if needed
     ].filter(Boolean), // Remove any undefined values
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,

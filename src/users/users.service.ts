@@ -7,6 +7,8 @@ import { CreateUserDetailsDto } from 'src/dtos/createUserDetailsDto';
 import { UserDetails } from 'src/schemas/userDetails.schema';
 import { Subject } from 'src/schemas/subject.schema';
 import { encryptData, encryptkeyString } from 'src/utils/encrypt_decrypt';
+import { QuizAttempt } from 'src/schemas/quiz-attempt.schema';
+import { Quiz } from 'src/schemas/quiz.schema';
 
 @Injectable()
 export class UsersService {
@@ -14,7 +16,9 @@ export class UsersService {
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectModel(UserDetails.name) private userDetailsModel: Model<UserDetails>,
-        @InjectModel(Subject.name) private subjectModel: Model<Subject>
+        @InjectModel(Subject.name) private subjectModel: Model<Subject>,
+        @InjectModel(QuizAttempt.name) private quizAttemptModel: Model<QuizAttempt>,
+        @InjectModel(Quiz.name) private quizModel: Model<Quiz>
     ) {}
 
     async getAllUsers(): Promise<User[]> {
@@ -208,6 +212,56 @@ export class UsersService {
     } as unknown as Subject;
 
     return filtered;
+  }
+
+  // Save a quiz attempt for analytics
+  async saveQuizAttempt(userId: string, payload: {
+    subjectId: string;
+    topicId: string;
+    answers: Array<{ quizId: string; selectedAnswer: number; timeSpent?: number }>;
+    totalTimeSpent?: number;
+  }) {
+    // Fetch quizzes to verify answers
+    const quizIds = payload.answers.map(a => a.quizId);
+    const quizzes = await this.quizModel.find({ _id: { $in: quizIds } }).exec();
+    const quizMap = new Map(quizzes.map(q => [q._id.toString(), q]));
+
+    let correctAnswers = 0;
+    for (const ans of payload.answers) {
+      const quiz = quizMap.get(ans.quizId);
+      if (!quiz) continue;
+      const correctIndex = quiz.options.findIndex(o => (o as any).isCorrect === true);
+      if (correctIndex === ans.selectedAnswer) correctAnswers++;
+    }
+
+    const totalQuestions = payload.answers.length;
+    const score = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+    const totalTimeSpent = payload.totalTimeSpent ?? payload.answers.reduce((s, a) => s + (a.timeSpent || 0), 0);
+
+    const attempt = new this.quizAttemptModel({
+      userId,
+      subjectId: payload.subjectId,
+      topicId: payload.topicId,
+      answers: payload.answers.map(a => ({
+        quizId: a.quizId as any,
+        selectedAnswer: a.selectedAnswer,
+        isCorrect: (() => {
+          const quiz = quizMap.get(a.quizId);
+          if (!quiz) return false;
+          const correctIndex = quiz.options.findIndex(o => (o as any).isCorrect === true);
+          return correctIndex === a.selectedAnswer;
+        })(),
+        timeSpent: a.timeSpent || 0,
+      })),
+      totalQuestions,
+      correctAnswers,
+      score,
+      totalTimeSpent,
+      status: 'completed'
+    });
+
+    await attempt.save();
+    return { success: true };
   }
 
 }

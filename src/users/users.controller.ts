@@ -10,6 +10,16 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AdminService } from 'src/admin/admin.service';
 import { Subject } from 'src/schemas/subject.schema';
 import { QuizFilterDto } from 'src/dtos/quiz.dto';
+import { IsArray, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { ApiBody } from '@nestjs/swagger';
+
+// DTO for quiz attempts
+export class CreateQuizAttemptDto {
+  @IsString() @IsNotEmpty() subjectId: string;
+  @IsString() @IsNotEmpty() topicId: string;
+  @IsArray() @IsNotEmpty() answers: Array<{ quizId: string; selectedAnswer: number; timeSpent?: number }>;
+  @IsOptional() @IsNumber() totalTimeSpent?: number;
+}
 
 @ApiTags('Users')
 @Controller('users')
@@ -110,5 +120,14 @@ export class UsersController {
   @Get('subjects/:id')
   async getSubjectByIdForUsers(@Req() req, @Param('id') id: string): Promise<Subject> {
     return this.usersService.getSubjectByIdForUser(req['userID'], id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Save a quiz attempt for analytics' })
+  @ApiBody({ description: 'Quiz attempt payload', type: CreateQuizAttemptDto as any })
+  @Post('quiz-attempts')
+  async saveQuizAttempt(@Req() req, @Body() dto: CreateQuizAttemptDto) {
+    return this.usersService.saveQuizAttempt(req['userID'], dto as any);
   }
 }
