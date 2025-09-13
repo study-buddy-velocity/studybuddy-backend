@@ -7,6 +7,7 @@ import { OpenAI } from 'openai';
 import { ChatHistory, ChatHistoryDocument } from 'src/schemas/chatHistory.schema';
 import { UsersService } from 'src/users/users.service';
 import { formatDate, formatTimestampToIOS } from 'src/utils/date_formatter';
+import { Subject } from 'src/schemas/subject.schema';
 
 @Injectable()
 export class ChatService {
@@ -16,8 +17,77 @@ export class ChatService {
 
     constructor(
         @InjectModel(ChatHistory.name) private chatHistoryModel: Model<ChatHistoryDocument>,
+        @InjectModel(Subject.name) private subjectModel: Model<Subject>,
     ) {
         this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    }
+
+    private looksLikeObjectId(value?: string): boolean {
+        return !!value && /^[a-f0-9]{24}$/i.test(value);
+    }
+
+    private async resolveSubjectAndTopicNames(subjectInput: string, topicInput?: string): Promise<{ subjectName: string, topicName?: string }> {
+        let subjectName = subjectInput;
+        let topicName = topicInput;
+
+        try {
+            let subjectDoc: any = null;
+
+            // 1) Try to resolve subject
+            if (this.looksLikeObjectId(subjectInput)) {
+                subjectDoc = await this.subjectModel.findById(subjectInput).exec();
+                if (subjectDoc?.name) {
+                    subjectName = subjectDoc.name;
+                }
+            } else if (subjectInput) {
+                subjectDoc = await this.subjectModel.findOne({ name: subjectInput }).exec();
+                if (subjectDoc?.name) {
+                    subjectName = subjectDoc.name;
+                }
+            }
+
+            // 2) Try to resolve topic and (if needed) subject by topic
+            if (topicInput) {
+                if (subjectDoc) {
+                    // We already have the subject; try to resolve topic within it
+                    if (this.looksLikeObjectId(topicInput)) {
+                        const match = subjectDoc.topics?.find((t: any) => String(t._id) === String(topicInput));
+                        if (match?.name) topicName = match.name;
+                    } else {
+                        // Assume it's already a readable topic name
+                        topicName = topicInput;
+                    }
+                } else {
+                    // We don't have a subject doc yet; try to find subject by topic
+                    if (this.looksLikeObjectId(topicInput)) {
+                        const foundByTopicId = await this.subjectModel.findOne({ 'topics._id': topicInput }).exec();
+                        if (foundByTopicId) {
+                            subjectDoc = foundByTopicId;
+                            subjectName = foundByTopicId.name;
+                            const match = foundByTopicId.topics?.find((t: any) => String(t._id) === String(topicInput));
+                            if (match?.name) topicName = match.name;
+                        }
+                    } else {
+                        // Topic provided as name — try to find subject by topic name
+                        const foundByTopicName = await this.subjectModel.findOne({ 'topics.name': topicInput }).exec();
+                        if (foundByTopicName) {
+                            subjectDoc = foundByTopicName;
+                            subjectName = foundByTopicName.name;
+                            const match = foundByTopicName.topics?.find((t: any) => String(t.name).toLowerCase() === String(topicInput).toLowerCase());
+                            if (match?.name) topicName = match.name;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // Fail silently; we'll fallback to inputs
+        }
+
+        // Final safety: if topic still looks like an ID (unresolved), drop it to avoid leaking IDs in prompts/UI
+        if (topicName && this.looksLikeObjectId(topicName)) {
+            topicName = undefined;
+        }
+        return { subjectName, topicName };
     }
 
     // Random friendly responses for different scenarios
@@ -162,70 +232,83 @@ Remember: The best students are the ones who ask questions when they don't under
     private isOffTopic(query: string, subject: string, topic?: string): boolean {
         const lowerQuery = query.toLowerCase();
         const lowerSubject = subject.toLowerCase();
-        
+
+        // If topic provided, be permissive: treat as on-topic unless clearly unrelated to education
+        if (topic && topic.trim().length > 0) {
+            const lt = topic.toLowerCase();
+            // If the query mentions the topic or contains overlapping words, it's on-topic
+            const topicWords = lt.split(/\s+/);
+            const hasOverlap = topicWords.some(tw => lowerQuery.includes(tw));
+            if (hasOverlap || lowerQuery.includes(lowerSubject)) {
+                return false;
+            }
+        }
+
         // Personal questions about the AI
         const personalQuestions = [
-            "what's your name", "what is your name", "how old are you", "what do you look like", 
+            "what's your name", "what is your name", "how old are you", "what do you look like",
             "where are you from", "do you have feelings", "are you real", "are you human",
             "what's your favorite", "what is your favorite", "do you like", "do you love",
             "where do you live", "what do you do", "who created you", "who made you",
             "are you married", "do you have friends", "what's your birthday"
         ];
-        
+
         // Other subjects (expand based on your available subjects)
         const otherSubjects = [
             "history", "geography", "music", "art", "sports", "games", "gaming",
             "movies", "tv shows", "television", "celebrities", "politics", "religion",
-            "cooking", "food", "animals", "pets", "weather", "news", "current events",
+            "cooking", "animals", "pets", "weather", "news", "current events",
             "technology", "computers", "phones", "social media", "instagram", "tiktok",
             "youtube", "netflix", "anime", "manga", "books", "novels"
         ];
-        
+
         // General conversation starters
         const casualConversation = [
             "how are you", "what's up", "hello", "hi there", "good morning",
             "good afternoon", "good evening", "how's your day", "what's new",
             "tell me a joke", "make me laugh", "i'm bored", "what should i do"
         ];
-        
+
         // Check if it's a personal question
         if (personalQuestions.some(pattern => lowerQuery.includes(pattern))) {
             return true;
         }
-        
+
         // Check for casual conversation
         if (casualConversation.some(pattern => lowerQuery.includes(pattern))) {
             return true;
         }
-        
+
         // Check if it's about other subjects (only if current query doesn't contain current subject)
-        if (!lowerQuery.includes(lowerSubject) && 
+        if (!lowerQuery.includes(lowerSubject) &&
             otherSubjects.some(otherSubject => lowerQuery.includes(otherSubject))) {
             return true;
         }
-        
-        // If topic is specified, check if query is related to the topic
-        if (topic && !lowerQuery.includes(topic.toLowerCase()) && 
+
+        // If topic is specified, check if query is related to the topic with more flexibility
+        if (topic && !lowerQuery.includes(topic.toLowerCase()) &&
             !lowerQuery.includes(lowerSubject)) {
-            // Some flexibility for related concepts
-            const topicWords = topic.toLowerCase().split(' ');
-            const queryWords = lowerQuery.split(' ');
-            const hasTopicConnection = topicWords.some(topicWord => 
-                queryWords.some(queryWord => 
+            const topicWords = topic.toLowerCase().split(/\s+/);
+            const queryWords = lowerQuery.split(/\s+/);
+            const hasTopicConnection = topicWords.some(topicWord =>
+                queryWords.some(queryWord =>
                     queryWord.includes(topicWord) || topicWord.includes(queryWord)
                 )
             );
-            
+
             if (!hasTopicConnection) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
     async getChatResponse(userID: string, subject: string, query: string, topic?: string): Promise<string> {
         let userClass = ((await this.usersService.getUserDetailsByUserId(userID)) as String)["class"];
+
+        // Resolve IDs to human-friendly names if needed
+        const { subjectName, topicName } = await this.resolveSubjectAndTopicNames(subject, topic);
 
         const lastTwoChats = await this.chatHistoryModel
             .find({ userId: userID })
@@ -235,15 +318,16 @@ Remember: The best students are the ones who ask questions when they don't under
 
         if (!this.isEducationalContent(query)) {
             // Return random inappropriate content response
-            const response = this.getRandomInappropriateResponse(subject);
-            await this.addQueryResponse(userID, query, response, 0, subject, `Q: ${query} A: Redirected inappropriate question`, topic);
+            const response = this.getRandomInappropriateResponse(subjectName);
+            await this.addQueryResponse(userID, query, response, 0, subjectName, `Q: ${query} A: Redirected inappropriate question`, topicName);
             return response;
         }
 
-        // Check if it's an off-topic question
-        if (this.isOffTopic(query, subject, topic)) {
-            const response = this.getRandomOffTopicResponse(subject, topic);
-            await this.addQueryResponse(userID, query, response, 0, subject, `Q: ${query} A: Redirected off-topic question`, topic);
+        // Check if it's an off-topic question (be lenient if topic is provided)
+        const treatAsOffTopic = !topicName && this.isOffTopic(query, subjectName, undefined);
+        if (treatAsOffTopic) {
+            const response = this.getRandomOffTopicResponse(subjectName, topicName);
+            await this.addQueryResponse(userID, query, response, 0, subjectName, `Q: ${query} A: Redirected off-topic question`, topicName);
             return response;
         }
 
@@ -252,13 +336,13 @@ Remember: The best students are the ones who ask questions when they don't under
                 (chat) =>
                     chat.subjectWise?.some(
                         (s) =>
-                            s.subject === subject &&
+                            (s.subject === subjectName || s.subject === subject) &&
                             s.queries?.length > 0 &&
                             s.queries[s.queries.length - 1].query.toLowerCase() !== query.toLowerCase(),
                     ),
             );
 
-            const subjectWise = lastChat?.subjectWise?.find((s) => s.subject === subject);
+            const subjectWise = lastChat?.subjectWise?.find((s) => s.subject === subjectName || s.subject === subject);
             const lastValidQuery = subjectWise?.queries?.slice(-1)[0];
 
             if (!lastValidQuery) {
@@ -284,7 +368,7 @@ Please provide a clearer, more detailed explanation or approach the topic from a
                 messages: [
                     {
                         role: 'system',
-                        content: this.getFollowUpSystemPrompt(userClass, subject),
+                        content: this.getFollowUpSystemPrompt(userClass, subjectName),
                     },
                     {
                         role: 'user',
@@ -305,7 +389,7 @@ Please provide a clearer, more detailed explanation or approach the topic from a
             const summary = summaryMatch ? summaryMatch[1].trim() : '';
             const cleanResponse = reply.content.replace(/<summary>.*?<\/summary>/s, '').trim();
 
-            await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subject, summary, topic);
+            await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subjectName, summary, topicName);
 
             return cleanResponse;
         }
@@ -313,7 +397,7 @@ Please provide a clearer, more detailed explanation or approach the topic from a
         // Filter previous context to only include the current subject and topic
         const filteredPreviousContext = lastTwoChats
             .flatMap(chat => chat.subjectWise
-                .filter(subjectWise => subjectWise.subject === subject && (!topic || subjectWise.queries.some(q => q.query.toLowerCase().includes(topic.toLowerCase()) || q.response.toLowerCase().includes(topic.toLowerCase()))))
+                .filter(subjectWise => (subjectWise.subject === subjectName || subjectWise.subject === subject) && (!topicName || subjectWise.queries.some(q => (q.topic && q.topic === topicName) || q.query.toLowerCase().includes(topicName.toLowerCase()) || q.response.toLowerCase().includes(topicName.toLowerCase()))))
                 .flatMap(subjectWise => subjectWise.queries
                     .filter(q => q.summary)
                     .map(q => q.summary)
@@ -323,14 +407,14 @@ Please provide a clearer, more detailed explanation or approach the topic from a
 
         const prompt = `Student Context:
 Grade Level: ${userClass}
-Subject: ${subject}${topic ? `\nTopic Focus: ${topic}` : ''}
+Subject: ${subjectName}${topicName ? `\nTopic Focus: ${topicName}` : ''}
 Previous Learning Context: ${filteredPreviousContext || 'This is a fresh start - no previous context available'}
 
 Student's Question: "${query}"
 
 Please provide a helpful, engaging response that:
 - Matches their grade ${userClass} level
-- Keeps them excited about learning ${subject}
+- Keeps them excited about learning ${subjectName}
 - Answers their question thoroughly but in an age-appropriate way
 - Encourages further exploration of the topic
 - Uses examples they can relate to`;
@@ -340,7 +424,7 @@ Please provide a helpful, engaging response that:
             messages: [
                 {
                     role: 'system',
-                    content: this.getPersonalizedSystemPrompt(userClass, subject, topic),
+                    content: this.getPersonalizedSystemPrompt(userClass, subjectName, topicName),
                 },
                 {
                     role: 'user',
@@ -361,7 +445,7 @@ Please provide a helpful, engaging response that:
         const summary = summaryMatch ? summaryMatch[1] : '';
         const cleanResponse = reply.content.replace(/<summary>.*?<\/summary>/s, '').trim();
 
-        await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subject, summary, topic);
+        await this.addQueryResponse(userID, query, cleanResponse, totalTokens, subjectName, summary, topicName);
 
         return cleanResponse;
     }
@@ -491,17 +575,58 @@ Please provide a helpful, engaging response that:
             return { data: [] };
         }
 
-        // Filter to get ONLY queries that have exact topic match
+        // Build a mapping of subjectId -> subjectName to sanitize any stored IDs in responses/history
+        const subjectIdSet = new Set<string>();
+        result.forEach(ch => {
+            ch.subjectWise?.forEach(sw => {
+                if (typeof sw.subject === 'string' && this.looksLikeObjectId(sw.subject)) {
+                    subjectIdSet.add(String(sw.subject));
+                }
+            });
+            (ch.subjects || []).forEach((s: any) => {
+                if (typeof s === 'string' && this.looksLikeObjectId(s)) {
+                    subjectIdSet.add(String(s));
+                }
+            });
+        });
+        let subjectMap: Record<string, string> = {};
+        if (subjectIdSet.size > 0) {
+            const subjectDocs = await this.subjectModel.find({ _id: { $in: Array.from(subjectIdSet) } }).exec();
+            subjectDocs.forEach(doc => {
+                subjectMap[String(doc._id)] = doc.name;
+            });
+        }
+
+        // Filter to get ONLY queries that have exact topic match and sanitize subjects/IDs in text
         const topicHistory = result.map(chatHistory => {
-            const filteredSubjectWise = chatHistory.subjectWise.map(subjectData => ({
-                ...subjectData,
-                queries: subjectData.queries.filter(query => {
+            const filteredSubjectWise = chatHistory.subjectWise.map(subjectData => {
+                const hasIdSubject = typeof subjectData.subject === 'string' && this.looksLikeObjectId(subjectData.subject);
+                const subjectName = hasIdSubject ? (subjectMap[subjectData.subject] || subjectData.subject) : subjectData.subject;
+                const sanitizedQueries = subjectData.queries.filter(query => {
                     // STRICT topic matching - only exact matches
                     const hasExactTopicMatch = query.topic && query.topic.trim() === topic.trim();
                     console.log(`[getTopicChatHistory] Query topic: "${query.topic}", Target topic: "${topic}", Match: ${hasExactTopicMatch}`);
                     return hasExactTopicMatch;
-                })
-            })).filter(subjectData => subjectData.queries.length > 0);
+                }).map(q => {
+                    // Replace any subject ID mentions in response/summary/query with the subject name
+                    if (hasIdSubject && subjectMap[subjectData.subject]) {
+                        const idRegex = new RegExp(subjectData.subject, 'g');
+                        return {
+                            ...q,
+                            response: typeof q.response === 'string' ? q.response.replace(idRegex, subjectName as string) : q.response,
+                            summary: typeof q.summary === 'string' ? q.summary.replace(idRegex, subjectName as string) : q.summary,
+                            query: typeof q.query === 'string' ? q.query.replace(idRegex, subjectName as string) : q.query,
+                        };
+                    }
+                    return q;
+                });
+
+                return {
+                    ...subjectData,
+                    subject: subjectName,
+                    queries: sanitizedQueries,
+                };
+            }).filter(subjectData => subjectData.queries.length > 0);
 
             return {
                 ...chatHistory.toObject(),

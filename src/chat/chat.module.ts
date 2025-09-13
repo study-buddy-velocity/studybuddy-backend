@@ -6,11 +6,13 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ChatHistory, ChatHistorySchema } from 'src/schemas/chatHistory.schema';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ChatCleanupService } from './chat-cleanup.service';
+import { Subject, SubjectSchema } from 'src/schemas/subject.schema';
 
 @Module({
   imports: [
-    UsersModule, 
+    UsersModule,
     MongooseModule.forFeature([{ name: ChatHistory.name, schema: ChatHistorySchema }]),
+    MongooseModule.forFeature([{ name: Subject.name, schema: SubjectSchema }]),
     ScheduleModule.forRoot()
   ],
   providers: [ChatService, ChatCleanupService],
