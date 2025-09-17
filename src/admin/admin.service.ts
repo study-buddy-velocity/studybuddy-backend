@@ -223,7 +223,23 @@ export class AdminService {
         { classId: { $exists: false } },
       ];
     }
-    
+
+    // Difficulty level filter (string), default behavior: if not provided, include all.
+    if (filterDto.difficulty_level) {
+      if (filterDto.difficulty_level === 'medium') {
+        // Treat missing as medium
+        filter.$and = (filter.$and || []).concat([
+          { $or: [
+            { difficulty_level: 'medium' },
+            { difficulty_level: { $exists: false } }
+          ]}
+        ]);
+      } else {
+        // Exact match for easy/hard
+        filter.difficulty_level = filterDto.difficulty_level;
+      }
+    }
+
     let query = this.quizModel.find(filter);
     
     // Debug the value to ensure it's being received correctly

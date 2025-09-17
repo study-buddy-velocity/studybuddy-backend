@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsMongoId, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsMongoId, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested, Min, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class OptionDto {
@@ -38,6 +38,10 @@ export class CreateQuizDto {
 
   @IsString()
   @IsOptional()
+  difficulty_level?: 'easy' | 'medium' | 'hard';
+
+  @IsString()
+  @IsOptional()
   explanation?: string;
 
   @IsString()
@@ -73,6 +77,10 @@ export class UpdateQuizDto {
 
   @IsString()
   @IsOptional()
+  difficulty_level?: 'easy' | 'medium' | 'hard';
+
+  @IsString()
+  @IsOptional()
   explanation?: string;
 }
 
@@ -88,7 +96,11 @@ export class QuizFilterDto {
   @IsString()
   @IsOptional()
   classId?: string;
-  
+
+  @IsString()
+  @IsOptional()
+  difficulty_level?: 'easy' | 'medium' | 'hard';
+
   @IsNumber()
   @IsOptional()
   @Min(1)

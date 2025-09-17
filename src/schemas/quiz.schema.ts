@@ -32,6 +32,10 @@ export class Quiz extends Document {
   @Prop({ default: 1 })
   difficulty: number;
 
+  // New difficulty level (string) for admin UI and filtering
+  @Prop({ required: false, enum: ['easy', 'medium', 'hard'], default: 'medium' })
+  difficulty_level?: string;
+
   @Prop({ required: false })
   explanation?: string;
 
